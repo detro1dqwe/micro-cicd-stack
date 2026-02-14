@@ -1,0 +1,16 @@
+# --- Secrets ---
+.env
+
+# --- Data & State ---
+data/
+
+# --- System & IDE Junk ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# --- Local Certificates ---
+*.pem
+*.key

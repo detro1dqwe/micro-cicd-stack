@@ -1,0 +1,85 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # --- Reverse Proxy ---
+  nginx:
+    image: nginx:alpine
+    container_name: gateway
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx:/etc/nginx/conf.d
+      - ./data/certbot:/etc/letsencrypt
+    networks:
+      - stack-net
+    depends_on:
+      gitea:
+        condition: service_healthy
+      registry:
+        condition: service_started
+    logging: *default-logging
+  
+  # --- Version Control ---
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    restart: always
+    volumes:
+      - ./data/gitea:/var/lib/gitea
+      - ./config/gitea/app.ini:/data/gitea/conf/app.ini
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "2222:2222"
+    networks:
+      - stack-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+    
+    # --- CI/CD Runner ---
+  gitea-runner:
+    image: gitea/act_runner:latest
+    container_name: runner
+    restart: always
+    environment:
+      - GITEA_INSTANCE_URL=http://gitea:3000
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}
+      - GITEA_RUNNER_NAME=main-runner
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - stack-net
+    depends_on:
+      gitea:
+        condition: service_healthy
+    logging: *default-logging
+
+  # --- Docker Registry ---
+  registry:
+    image: registry:2
+    container_name: registry
+    restart: always
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
+    volumes:
+      - ./data/registry:/data
+    networks:
+      - stack-net
+    logging: *default-logging
+
+  # --- Additional services (e.g., certbot, MySql) can be added here ---
+
+
+networks:
+  stack-net:
+    driver: bridge
